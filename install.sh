@@ -1,16 +1,12 @@
 #!/bin/bash
 
 # Проверка запуска от правильного пользователя
-if [ "$(whoami)" != "chavesse" ]; then
-    echo "Ошибка: Скрипт должен быть запущен от пользователя chavesse"
+if [ "$(whoami)" != "root" ]; then
+    echo "Ошибка: Скрипт должен быть запущен от пользователя root"
     exit 1
 fi
 
 HOME_DIR="$HOME"
-
-# Установка зависимостей системы
-sudo apt-get update
-sudo apt-get install -y python3.11 python3.11-venv nginx
 
 # Создание структуры каталогов
 mkdir -p "$HOME_DIR/chavesse"
@@ -20,7 +16,7 @@ cd "$HOME_DIR/chavesse" || exit
 git clone https://github.com/ExNightHook/chavesse.git
 
 # Создание виртуальной среды
-python3.11 -m venv "$HOME_DIR/chavesse/env"
+"~/.pyenv/versions/3.13.2/bin/python" -m venv "$HOME_DIR/chavesse/env"
 
 # Установка зависимостей
 source "$HOME_DIR/chavesse/env/bin/activate"
@@ -81,8 +77,6 @@ echo 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"' >> "$HOME_DIR/.bashrc"
 source "$HOME_DIR/.bashrc"
 
 # Конфигурация Nginx
-sudo mkdir -p /etc/nginx/sites-available
-sudo mkdir -p /etc/nginx/sites-enabled
 sudo bash -c "cat << EOF > /etc/nginx/sites-enabled/chavesse.conf
 upstream chavesse {
     server 127.0.0.1:9000;
@@ -107,12 +101,12 @@ server {
 EOF"
 
 # Перезагрузка Nginx
-sudo nginx -t && sudo systemctl restart nginx
+sudo nginx -t && sudo nginx -s reload
 
 # Миграции и сбор статики
 cd "$HOME_DIR/chavesse/chavesse" || exit
 source "$HOME_DIR/chavesse/env/bin/activate"
-python manage.py migrate
-python manage.py collectstatic --noinput
+./manage.py migrate
+./manage.py collectstatic --noinput
 
 echo "Настройка завершена! Сервис доступен по адресу: http://79.137.192.4"
