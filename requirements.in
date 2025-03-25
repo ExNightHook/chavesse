@@ -1,5 +1,0 @@
-Django>=5.1.0
-djangorestframework
-drf-spectacular[sidecar]
-mysqlclient
-uwsgi
