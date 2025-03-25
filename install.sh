@@ -6,23 +6,38 @@ if [ "$(whoami)" != "root" ]; then
     exit 1
 fi
 
-HOME_DIR="$HOME"
+HOME_DIR="/root"
 
 # Создание структуры каталогов
 mkdir -p "$HOME_DIR/chavesse"
 cd "$HOME_DIR/chavesse" || exit
 
-# Клонирование репозитория с GitHub
+# Клонирование репозитория
 git clone https://github.com/ExNightHook/chavesse.git
 
-# Создание виртуальной среды
-"~/.pyenv/versions/3.13.2/bin/python" -m venv "$HOME_DIR/chavesse/env"
+# Проверка установки Python
+PYTHON_PATH="$HOME_DIR/.pyenv/versions/3.13.2/bin/python"
+if [ ! -f "$PYTHON_PATH" ]; then
+    echo "Ошибка: Python 3.13.2 не установлен через pyenv!"
+    echo "Выполните:"
+    echo "1. pyenv install 3.13.2"
+    echo "2. pyenv global 3.13.2"
+    exit 1
+fi
 
-# Установка зависимостей
-source "$HOME_DIR/chavesse/env/bin/activate"
-pip install --upgrade pip wheel
-cd "$HOME_DIR/chavesse/chavesse" || exit
-pip install -r requirements.txt
+# Создание виртуальной среды (ИСПРАВЛЕН ПУТЬ)
+"$PYTHON_PATH" -m venv "$HOME_DIR/chavesse/env"
+
+# Установка зависимостей (ДОБАВЛЕНА ПРОВЕРКА АКТИВАЦИИ)
+if [ -f "$HOME_DIR/chavesse/env/bin/activate" ]; then
+    source "$HOME_DIR/chavesse/env/bin/activate"
+    pip install --upgrade pip wheel
+    cd "$HOME_DIR/chavesse/chavesse" || exit
+    pip install -r requirements.txt
+else
+    echo "Ошибка: Не удалось активировать виртуальную среду!"
+    exit 1
+fi
 
 # Генерация SECRET_KEY
 SECRET_KEY=$(openssl rand -base64 30 | tr -dc 'a-zA-Z0-9!@#$%^&*()_+-' | head -c50)
@@ -33,6 +48,17 @@ from .common import *
 
 SECRET_KEY = '$SECRET_KEY'
 ALLOWED_HOSTS.append('79.137.192.4')
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'chavesse',
+        'USER': 'chavesse',
+        'PASSWORD': 'HEkrkNxswn4n',
+        'HOST': 'localhost',
+        'PORT': '3306',
+    }
+}
 EOF
 
 # Конфигурация uWSGI
@@ -66,18 +92,21 @@ StandardError=syslog
 WantedBy=default.target
 EOF
 
+# Права на systemd сервис
+chmod 644 "$HOME_DIR/.config/systemd/user/chavesse.service"
+
 # Активация сервиса
 systemctl --user daemon-reload
 systemctl --user start chavesse
 systemctl --user enable chavesse
-sudo loginctl enable-linger chavesse
+loginctl enable-linger root
 
 # Настройка окружения
 echo 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"' >> "$HOME_DIR/.bashrc"
 source "$HOME_DIR/.bashrc"
 
 # Конфигурация Nginx
-sudo bash -c "cat << EOF > /etc/nginx/sites-enabled/chavesse.conf
+cat << EOF > /etc/nginx/sites-available/chavesse.conf
 upstream chavesse {
     server 127.0.0.1:9000;
 }
@@ -98,14 +127,16 @@ server {
     listen 80;
     listen [::]:80;
 }
-EOF"
+EOF
 
-# Перезагрузка Nginx
-sudo nginx -t && sudo nginx -s reload
+# Активация конфига Nginx
+ln -sf /etc/nginx/sites-available/chavesse.conf /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
 
-# Миграции и сбор статики
+# Миграции и сбор статики (ИСПРАВЛЕНЫ ПРАВА)
 cd "$HOME_DIR/chavesse/chavesse" || exit
 source "$HOME_DIR/chavesse/env/bin/activate"
+chmod +x manage.py
 ./manage.py migrate
 ./manage.py collectstatic --noinput
 
